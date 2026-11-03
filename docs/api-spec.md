@@ -2,7 +2,8 @@
 
 - Base URL：`http://localhost:3000/api/v1`
 - 格式：JSON（`Content-Type: application/json`）
-- 認證：除了登入以外，所有 API 都需要在 header 帶上 `Authorization: Bearer <accessToken>`
+- 認證：除了 `/auth/login`、`/auth/refresh`、`/auth/logout` 以外，所有 API 都需要在 header 帶上 `Authorization: Bearer <accessToken>`
+- refresh token 放在 HttpOnly cookie `refresh_token`（`Path=/api/v1/auth`、`SameSite=Strict`），由瀏覽器自動帶上
 - 互動式文件：Swagger http://localhost:3000/api/docs
 
 ## 目錄
@@ -26,7 +27,9 @@
 
 | Method | Path | 用途 | 權限 |
 |---|---|---|---|
-| POST | `/auth/login` | 登入，取得 JWT | 不需登入 |
+| POST | `/auth/login` | 登入，取得 access token，並設定 refresh token cookie | 不需登入 |
+| POST | `/auth/refresh` | 用 refresh token cookie 換新的 access token | 不需登入（需要 cookie） |
+| POST | `/auth/logout` | 清除 refresh token cookie | 不需登入 |
 | GET | `/auth/me` | 目前登入者與其權限 | 登入即可 |
 | PATCH | `/auth/me/password` | 修改自己的密碼 | 登入即可 |
 | GET | `/employees` | 員工列表（搜尋、篩選、分頁、排序） | `employee:read` |
@@ -131,7 +134,7 @@
 {
   "accessToken": "eyJhbGciOiJIUzI1NiIs...",
   "tokenType": "Bearer",
-  "expiresIn": 3600,
+  "expiresIn": 900,
   "user": {
     "id": 1,
     "username": "admin",
@@ -141,6 +144,8 @@
 }
 ```
 
+同時回傳 `Set-Cookie: refresh_token=...; HttpOnly; SameSite=Strict; Path=/api/v1/auth`。refresh token 不會出現在回應 body。
+
 **錯誤**
 
 | 狀態 | code | 情境 |
@@ -148,6 +153,28 @@
 | 400 | VALIDATION_FAILED | 缺少欄位 |
 | 401 | INVALID_CREDENTIALS | 帳號不存在、密碼錯誤、帳號已停用。**三種情況回傳相同的訊息**，避免被用來探測哪些帳號存在 |
 | 429 | TOO_MANY_REQUESTS | 嘗試次數過多 |
+
+---
+
+## POST /auth/refresh
+
+用 cookie 中的 refresh token 換新的 access token。前端在重新整理頁面、或其他 API 回 401（access token 過期）時呼叫。**不需要 Authorization header**，但必須帶上 `refresh_token` cookie。
+
+**Response 200**：格式與登入回應相同，並換發新的 refresh token cookie。
+
+**錯誤**
+
+| 狀態 | code | 情境 |
+|---|---|---|
+| 401 | UNAUTHORIZED | 沒有 cookie、refresh token 無效或過期、帳號已停用、密碼已被修改。同時清除 cookie |
+
+---
+
+## POST /auth/logout
+
+清除 refresh token cookie。**不需要登入**（access token 可能已經過期，仍要能登出）。
+
+**Response 204**
 
 ---
 
@@ -180,9 +207,9 @@
 | currentPassword | 必填 |
 | newPassword | 至少 8 字元、最多 72 bytes（約 24 個中文字），不可與目前的密碼相同 |
 
-**Response 200**：格式與登入回應相同，包含一個**新的** `accessToken`。
+**Response 200**：格式與登入回應相同，包含一個**新的** `accessToken`，並換發新的 refresh token cookie。
 
-**修改成功後，在這之前簽發的所有 token 都會失效**（包含其他裝置、以及這次請求所使用的 token），所以前端必須改用回應中的新 token。
+**修改成功後，在這之前簽發的所有 token 都會失效**（包含 refresh token、其他裝置、以及這次請求所使用的 token），所以前端必須改用回應中的新 token。
 
 **錯誤**
 

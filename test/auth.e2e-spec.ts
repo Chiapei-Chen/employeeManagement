@@ -4,6 +4,16 @@ import type { Server as App } from 'node:http';
 import { DataSource } from 'typeorm';
 import { createTestApp, loginAs } from './helpers.js';
 
+function refreshCookieOf(res: request.Response): string | undefined {
+  const cookies = ([] as string[]).concat(res.headers['set-cookie'] ?? []);
+  return cookies.find((c) => c.startsWith('refresh_token='));
+}
+
+/** 取出 "refresh_token=xxx"，模擬瀏覽器下次請求帶上的 Cookie header */
+function cookiePair(res: request.Response): string {
+  return refreshCookieOf(res)!.split(';')[0];
+}
+
 describe('Auth & authorization (e2e)', () => {
   let app: INestApplication<App>;
   let adminToken: string;
@@ -26,7 +36,7 @@ describe('Auth & authorization (e2e)', () => {
         .expect(200);
       expect(res.body).toMatchObject({
         tokenType: 'Bearer',
-        expiresIn: 3600,
+        expiresIn: 900,
         user: {
           username: 'viewer',
           role: 'readonly',
@@ -35,6 +45,18 @@ describe('Auth & authorization (e2e)', () => {
       });
       expect(res.body.accessToken).toEqual(expect.any(String));
       expect(res.body.user).not.toHaveProperty('passwordHash');
+      expect(res.body).not.toHaveProperty('refreshToken');
+    });
+
+    it('sets the refresh token as an HttpOnly, SameSite=Strict cookie', async () => {
+      const res = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'viewer', password: 'Viewer@123' })
+        .expect(200);
+      const cookie = refreshCookieOf(res);
+      expect(cookie).toMatch(/HttpOnly/);
+      expect(cookie).toMatch(/SameSite=Strict/);
+      expect(cookie).toMatch(/Path=\/api\/v1\/auth/);
     });
 
     it.each([
@@ -64,6 +86,79 @@ describe('Auth & authorization (e2e)', () => {
         .post('/api/v1/auth/login')
         .send({ username: 'disabled', password: 'Admin@123' })
         .expect(401);
+    });
+  });
+
+  describe('POST /auth/refresh', () => {
+    it('exchanges the refresh cookie for a new access token and rotates the cookie', async () => {
+      const login = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'admin', password: 'Admin@123' })
+        .expect(200);
+
+      const res = await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookiePair(login))
+        .expect(200);
+      expect(res.body).toMatchObject({
+        tokenType: 'Bearer',
+        user: { username: 'admin', role: 'admin' },
+      });
+      expect(refreshCookieOf(res)).toBeDefined();
+
+      await http()
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${res.body.accessToken}`)
+        .expect(200);
+    });
+
+    it('401 without the refresh cookie', async () => {
+      const res = await http().post('/api/v1/auth/refresh').expect(401);
+      expect(res.body.code).toBe('UNAUTHORIZED');
+    });
+
+    it('does not accept an access token as a refresh token', async () => {
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', `refresh_token=${adminToken}`)
+        .expect(401);
+    });
+
+    it('does not accept a refresh token as an access token', async () => {
+      const login = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'admin', password: 'Admin@123' })
+        .expect(200);
+      const refreshToken = cookiePair(login).split('=')[1];
+      await http()
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${refreshToken}`)
+        .expect(401);
+    });
+
+    it('rejects the refresh token once the account is deactivated', async () => {
+      const ds = app.get(DataSource);
+      await ds.query(`INSERT INTO users (username, password_hash, role)
+        SELECT 'temp-refresh', password_hash, 'admin' FROM users WHERE username = 'admin'`);
+      const login = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'temp-refresh', password: 'Admin@123' })
+        .expect(200);
+
+      await ds.query(
+        `UPDATE users SET is_active = FALSE WHERE username = 'temp-refresh'`,
+      );
+      const res = await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookiePair(login))
+        .expect(401);
+      // 失效的 cookie 會被清掉
+      expect(refreshCookieOf(res)).toMatch(/refresh_token=;/);
+    });
+
+    it('POST /auth/logout clears the refresh cookie', async () => {
+      const res = await http().post('/api/v1/auth/logout').expect(204);
+      expect(refreshCookieOf(res)).toMatch(/refresh_token=;/);
     });
   });
 

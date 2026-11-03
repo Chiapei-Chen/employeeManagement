@@ -60,11 +60,20 @@
 POST /auth/login { username, password }
   → 限流（每個 IP 每分鐘 5 次，成功的登入也會計入）
   → 查詢帳號 → bcrypt 比對密碼 → 檢查是否啟用
-  → 簽發 JWT（1 小時）
+  → 簽發兩個 JWT：
+      access token（15 分鐘）→ 放在回應 body，前端只存在記憶體
+      refresh token（7 天）  → 放在 HttpOnly cookie，前端 JS 讀不到
 
-之後的每個請求：Authorization: Bearer <token>
+之後的每個請求：Authorization: Bearer <access token>
   → JwtAuthGuard：驗證 token，回資料庫取得使用者目前的狀態與角色
   → PermissionsGuard：檢查角色是否具備所需權限
+
+重新整理頁面，或 access token 過期（API 回 401）：
+POST /auth/refresh（瀏覽器自動帶上 refresh token cookie）
+  → 驗證 refresh token、帳號仍啟用、密碼未修改
+  → 簽發新的 access token，並換發新的 refresh token cookie
+
+POST /auth/logout → 清除 refresh token cookie
 ```
 
 | 作法 | 防範什麼 |
@@ -77,10 +86,21 @@ POST /auth/login { username, password }
 
 **JWT 中不放角色，每次請求都回資料庫查詢。** 這樣停用帳號、調整角色都能在下一個請求立即生效；代價是每個請求多一次以主鍵查詢，對這個規模可以接受。
 
-> **補充：為什麼用 Authorization header，而不是 HttpOnly cookie**
+> **補充：token 放在哪裡**
 >
-> | | Authorization header（本專案） | HttpOnly cookie |
+> | | access token | refresh token |
 > |---|---|---|
+> | 放在哪裡 | 前端記憶體（不寫入 localStorage） | HttpOnly cookie |
+> | 怎麼送出 | 前端手動加上 `Authorization` header | 瀏覽器自動帶上，只會送到 `/api/v1/auth/*` |
+> | JavaScript 讀得到嗎 | 讀得到，但只存在記憶體、效期短 | 讀不到，XSS 偷不走 |
+> | CSRF | 沒有風險，其他網站無法替使用者加上 header | `SameSite=Strict`，其他網站發出的請求不會帶上 cookie |
+>
+> 一般 API 仍使用 Authorization header，所以 Swagger、Postman 的測試方式不變。
+> 兩種 token 用 `typ` 欄位區分，refresh token 不能拿來呼叫一般 API，反之亦然。
+>
+> 目前的限制：refresh token 是無狀態的 JWT，登出只會清掉瀏覽器的 cookie，伺服器沒有記錄。如果 cookie 在登出前就被複製走，在過期前仍然可以使用（修改密碼或停用帳號會讓它立即失效）。若需要「登出後伺服器端也立即作廢」，要把 refresh token 存進資料庫並在登出時刪除。
+
+---|---|---|
 > | token 怎麼送出 | 前端每次手動加上 | 瀏覽器自動帶上 |
 > | JavaScript 讀得到 token 嗎 | 讀得到，有 XSS 時可能被偷 | 讀不到 |
 > | CSRF 風險 | 沒有，其他網站無法替使用者加上 header | 有，需要 `SameSite` 或 CSRF token 防範 |
@@ -167,7 +187,7 @@ COMMIT;
 
 後到的請求會在 `FOR UPDATE` 等待前一個交易 commit，再以最新的資料判斷，因此會被擋下（`LAST_ADMIN_REQUIRED`）。
 
-**修改密碼後，舊 token 立即失效**：簽發 token 時記錄當下的 `password_changed_at`，Guard 比對與資料庫是否一致。不使用 JWT 的 `iat` 比較，因為它只精確到秒，同一秒內修改密碼會判斷錯誤。自己修改密碼時，回應會附上新的 token，目前的畫面不會被登出。
+**修改密碼後，舊 token（包含 refresh token）立即失效**：簽發 token 時記錄當下的 `password_changed_at`，Guard 比對與資料庫是否一致。不使用 JWT 的 `iat` 比較，因為它只精確到秒，同一秒內修改密碼會判斷錯誤。自己修改密碼時，回應會附上新的 token，目前的畫面不會被登出。
 
 **其他規則**：帳號名稱轉小寫儲存；密碼至少 8 字元、最多 72 bytes（bcrypt 只使用前 72 bytes，所以上限以 UTF-8 bytes 計算而不是字元數：72 個中文字有 216 bytes，若以字元數計算，後 2/3 會被忽略）；修改自己的密碼也套用限流。
 

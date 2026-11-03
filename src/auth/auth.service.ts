@@ -21,6 +21,12 @@ export function passwordVersion(user: Pick<User, 'passwordChangedAt'>) {
   return user.passwordChangedAt?.getTime() ?? 0;
 }
 
+/** 回給前端的內容（含 access token），以及要放進 HttpOnly cookie 的 refresh token */
+export interface AuthSession {
+  response: LoginResponseDto;
+  refreshToken: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -30,7 +36,7 @@ export class AuthService {
   ) {}
 
   /** 登入-帳號密碼換取 token */
-  async login(username: string, password: string): Promise<LoginResponseDto> {
+  async login(username: string, password: string): Promise<AuthSession> {
     // 取得帳號資料
     const user = await this.usersService.getByUsername(username);
 
@@ -45,7 +51,34 @@ export class AuthService {
     }
 
     // 簽發 token
-    return this.issueToken(user);
+    return this.issueTokens(user);
+  }
+
+  /**
+   * 登入-用 refresh token 換新的 access token
+   * 同時換發新的 refresh token，只要持續使用就不會被登出
+   * 與 access token 相同：帳號停用或密碼已修改後，refresh token 也立即失效
+   */
+  async refresh(refreshToken: string | null): Promise<AuthSession> {
+    if (!refreshToken) throw this.unauthorized('Missing refresh token');
+
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken);
+    } catch {
+      throw this.unauthorized('Invalid or expired refresh token');
+    }
+    if (payload.typ !== 'refresh') {
+      throw this.unauthorized('Invalid token type');
+    }
+
+    const user = await this.usersService.getActiveById(payload.sub);
+    if (!user) throw this.unauthorized('User no longer active');
+    if (payload.pwd !== passwordVersion(user)) {
+      throw this.unauthorized('Password has been changed, please log in again');
+    }
+
+    return this.issueTokens(user);
   }
 
   /**
@@ -56,14 +89,12 @@ export class AuthService {
     actor: AuthUser,
     currentPassword: string,
     newPassword: string,
-  ): Promise<LoginResponseDto> {
+  ): Promise<AuthSession> {
     // 取得目前登入者的帳號資料
     const user = await this.usersService.getActiveById(actor.id);
 
     // 判斷 帳號是否仍然啟用
-    if (!user) {
-      throw AppException.of(ErrorCode.Unauthorized, 'User no longer active');
-    }
+    if (!user) throw this.unauthorized('User no longer active');
 
     // 判斷 目前的密碼是否正確
     if (!(await verifyPassword(currentPassword, user.passwordHash))) {
@@ -80,7 +111,7 @@ export class AuthService {
 
     // 設定新密碼，並簽發新的 token
     const updated = await this.usersService.setPassword(user.id, newPassword);
-    return this.issueToken(updated);
+    return this.issueTokens(updated);
   }
 
   /** 登入-目前登入者與其權限 */
@@ -93,19 +124,39 @@ export class AuthService {
     };
   }
 
-  /** 簽發 token，並附上登入者資訊 */
-  private async issueToken(user: User): Promise<LoginResponseDto> {
-    const payload: JwtPayload = {
+  /** 簽發 access token 與 refresh token，並附上登入者資訊 */
+  private async issueTokens(user: User): Promise<AuthSession> {
+    const base = {
       sub: user.id,
       username: user.username,
       pwd: passwordVersion(user),
     };
     const expiresIn = this.config.get('jwt.expiresInSeconds', { infer: true });
+    const refreshExpiresIn = this.config.get('jwt.refreshExpiresInSeconds', {
+      infer: true,
+    });
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync<JwtPayload>(
+        { ...base, typ: 'access' },
+        { expiresIn },
+      ),
+      this.jwtService.signAsync<JwtPayload>(
+        { ...base, typ: 'refresh' },
+        { expiresIn: refreshExpiresIn },
+      ),
+    ]);
     return {
-      accessToken: await this.jwtService.signAsync(payload, { expiresIn }),
-      tokenType: 'Bearer',
-      expiresIn,
-      user: this.getCurrentUser(user),
+      response: {
+        accessToken,
+        tokenType: 'Bearer',
+        expiresIn,
+        user: this.getCurrentUser(user),
+      },
+      refreshToken,
     };
+  }
+
+  private unauthorized(message: string) {
+    return AppException.of(ErrorCode.Unauthorized, message);
   }
 }

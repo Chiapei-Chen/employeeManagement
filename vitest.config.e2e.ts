@@ -15,6 +15,7 @@ export default defineConfig({
       JWT_SECRET: 'e2e-test-secret-at-least-16-chars',
       SEED_DEMO_DATA: 'true',
       LOGIN_THROTTLE_LIMIT: '1000',
+      JWT_EXPIRES_IN: '900',
     },
   },
 });

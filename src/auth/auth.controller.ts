@@ -5,19 +5,26 @@ import {
   HttpCode,
   Patch,
   Post,
+  Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiCookieAuth,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import type { Request, Response } from 'express';
+import type { AppConfig } from '../config/configuration.js';
 import type { AuthUser } from './auth-user.js';
-import { AuthService } from './auth.service.js';
+import { type AuthSession, AuthService } from './auth.service.js';
 import {
   AuthenticatedOnly,
   CurrentUser,
@@ -27,13 +34,22 @@ import { ChangeOwnPasswordDto } from './dto/change-own-password.dto.js';
 import { CurrentUserDto } from './dto/current-user.dto.js';
 import { LoginResponseDto } from './dto/login-response.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import {
+  clearRefreshCookie,
+  readRefreshCookie,
+  REFRESH_COOKIE,
+  setRefreshCookie,
+} from './refresh-cookie.js';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService<AppConfig, true>,
+  ) {}
 
-  /** 登入 */
+  /** 登入：access token 放在回應 body，refresh token 放在 HttpOnly cookie */
   @Post('login')
   @Public()
   @HttpCode(200)
@@ -42,8 +58,48 @@ export class AuthController {
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({ description: 'INVALID_CREDENTIALS' })
   @ApiTooManyRequestsResponse({ description: 'TOO_MANY_REQUESTS' })
-  login(@Body() dto: LoginDto): Promise<LoginResponseDto> {
-    return this.authService.login(dto.username, dto.password);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponseDto> {
+    const session = await this.authService.login(dto.username, dto.password);
+    return this.respond(res, session);
+  }
+
+  /**
+   * 用 cookie 中的 refresh token 換新的 access token
+   * 前端在重新整理頁面、或 access token 過期時呼叫
+   */
+  @Post('refresh')
+  @Public()
+  @HttpCode(200)
+  @ApiCookieAuth(REFRESH_COOKIE)
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({ description: 'UNAUTHORIZED' })
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponseDto> {
+    try {
+      const session = await this.authService.refresh(readRefreshCookie(req));
+      return this.respond(res, session);
+    } catch (err) {
+      // 已失效的 cookie 留著沒有用，順便清掉
+      clearRefreshCookie(res, this.cookieSecure());
+      throw err;
+    }
+  }
+
+  /**
+   * 登出：清除 refresh token cookie
+   * 不需要登入：access token 可能已經過期，仍要能清掉 cookie
+   */
+  @Post('logout')
+  @Public()
+  @HttpCode(204)
+  @ApiNoContentResponse()
+  logout(@Res({ passthrough: true }) res: Response): void {
+    clearRefreshCookie(res, this.cookieSecure());
   }
 
   /** 取得目前登入者與其權限 */
@@ -58,11 +114,10 @@ export class AuthController {
 
   /**
    * 修改自己的密碼
-   * 成功後其他裝置上的 token 全部失效，回應中附上新的 token 。
+   * 成功後其他裝置上的 token（含 refresh token）全部失效，回應中附上新的 token 。
    */
   @Patch('me/password')
   @AuthenticatedOnly()
-  // 需要驗證目前的密碼，等於另一個猜密碼的入口，所以也套用限流
   @UseGuards(ThrottlerGuard)
   @ApiBearerAuth()
   @ApiOkResponse({ type: LoginResponseDto })
@@ -70,14 +125,31 @@ export class AuthController {
     description:
       'VALIDATION_FAILED / INVALID_CURRENT_PASSWORD / PASSWORD_UNCHANGED',
   })
-  changePassword(
+  async changePassword(
     @CurrentUser() user: AuthUser,
     @Body() dto: ChangeOwnPasswordDto,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
-    return this.authService.changeOwnPassword(
+    const session = await this.authService.changeOwnPassword(
       user,
       dto.currentPassword,
       dto.newPassword,
     );
+    return this.respond(res, session);
+  }
+
+  /** refresh token 寫入 cookie，access token 與登入者資訊放在回應 body */
+  private respond(res: Response, session: AuthSession): LoginResponseDto {
+    setRefreshCookie(res, session.refreshToken, {
+      secure: this.cookieSecure(),
+      maxAgeSeconds: this.config.get('jwt.refreshExpiresInSeconds', {
+        infer: true,
+      }),
+    });
+    return session.response;
+  }
+
+  private cookieSecure() {
+    return this.config.get('cookieSecure', { infer: true });
   }
 }

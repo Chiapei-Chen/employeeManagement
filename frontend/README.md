@@ -13,8 +13,8 @@ npm run dev        # http://localhost:5173
 
 | 檔案 | 責任 |
 |---|---|
-| `src/api.ts` | 呼叫 API、帶上 token、把後端錯誤格式轉成 `ApiError`；收到 401 時自動登出 |
-| `src/auth.ts` | 登入狀態；`can(permission)` 依照後端回傳的 `permissions` 決定是否顯示按鈕 |
+| `src/api.ts` | 呼叫 API、帶上 access token（只存在記憶體）、把後端錯誤格式轉成 `ApiError`；收到 401 時先用 refresh token 換新的 access token 並重送，失敗才登出 |
+| `src/auth.ts` | 登入狀態；重新整理頁面時呼叫 `/auth/refresh` 還原登入；`can(permission)` 依照後端回傳的 `permissions` 決定是否顯示按鈕 |
 | `src/router.ts` | 預設需要登入，只有 `meta.public` 的頁面例外（與後端的設計相同） |
 | `src/errors.ts` | 依錯誤碼顯示中文訊息，並把錯誤對應到表單欄位 |
 | `src/components/EmployeeForm.vue` | 新增與修改共用；修改時只送出有變更的欄位 + `version` |

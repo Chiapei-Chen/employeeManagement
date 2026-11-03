@@ -26,8 +26,8 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
+      context.getHandler(), // 方法上標籤
+      context.getClass(),  // 控制器類別上標籤
     ]);
     if (isPublic) return true;
 
@@ -41,6 +41,7 @@ export class JwtAuthGuard implements CanActivate {
     } catch {
       throw this.unauthorized('Invalid or expired token');
     }
+    if (payload.typ !== 'access') throw this.unauthorized('Invalid token type');
 
     const user = await this.usersService.getActiveById(payload.sub);
     if (!user) throw this.unauthorized('User no longer active');
