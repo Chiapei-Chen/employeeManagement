@@ -23,9 +23,12 @@
 
 ## 如何啟動
 
-需要 Node.js 20 以上。使用 SQLite，**不需要安裝資料庫**，啟動時會自動建立資料表並寫入展示資料。
+需要 Node.js 20 以上與 PostgreSQL（本機可用 Docker 啟動）。啟動時會自動建立資料表並寫入展示資料。
 
 ```bash
+# 資料庫
+docker compose up -d          # PostgreSQL 17，localhost:5432
+
 # 後端
 npm install
 cp .env.example .env          # PowerShell：Copy-Item .env.example .env

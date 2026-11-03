@@ -21,13 +21,12 @@ export class UniqueConstraintException extends Error {
 export function uniqueViolationColumn(error: unknown): string | null {
   if (!(error instanceof QueryFailedError)) return null;
   const driverError = error.driverError as
-    { code?: string; message?: string } | undefined;
-  if (driverError?.code !== 'SQLITE_CONSTRAINT_UNIQUE') return null;
+    { code?: string; detail?: string } | undefined;
+  // PostgreSQL 的 unique_violation 錯誤碼
+  if (driverError?.code !== '23505') return null;
 
-  // SQLite: "UNIQUE constraint failed: employees.email"
-  const match = /UNIQUE constraint failed: \w+\.(\w+)/.exec(
-    driverError.message ?? '',
-  );
+  // PostgreSQL: detail = "Key (email)=(a@example.com) already exists."
+  const match = /^Key \((\w+)\)=/.exec(driverError.detail ?? '');
   return match?.[1] ?? 'unknown';
 }
 

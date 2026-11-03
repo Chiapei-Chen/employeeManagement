@@ -59,7 +59,7 @@ describe('Auth & authorization (e2e)', () => {
     it('rejects a disabled account even with the correct password', async () => {
       const ds = app.get(DataSource);
       await ds.query(`INSERT INTO users (username, password_hash, role, is_active)
-        SELECT 'disabled', password_hash, 'admin', 0 FROM users WHERE username = 'admin'`);
+        SELECT 'disabled', password_hash, 'admin', FALSE FROM users WHERE username = 'admin'`);
       await http()
         .post('/api/v1/auth/login')
         .send({ username: 'disabled', password: 'Admin@123' })
@@ -90,7 +90,7 @@ describe('Auth & authorization (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      await ds.query(`UPDATE users SET is_active = 0 WHERE username = 'temp'`);
+      await ds.query(`UPDATE users SET is_active = FALSE WHERE username = 'temp'`);
       await http()
         .get('/api/v1/auth/me')
         .set('Authorization', `Bearer ${token}`)

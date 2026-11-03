@@ -238,7 +238,7 @@ describe('Users / account management (e2e)', () => {
             .set('Authorization', `Bearer ${b}`)
             .send({ role: 'readonly' }),
         ]);
-        // 一個成功；另一個若已通過 guard 會被條件式 UPDATE 擋下（409），否則因為已不是 admin 而 403
+        // 一個成功；另一個若已通過 guard 會在交易中被擋下（409），否則因為已不是 admin 而 403
         expect(results.map((r) => r.status).sort()).toEqual([
           200,
           expect.any(Number),

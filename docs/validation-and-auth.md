@@ -155,13 +155,17 @@ admin:    ['employee:read', 'employee:create', 'employee:update', 'user:manage']
 | 不能修改自己的角色或狀態；不能用管理者 API 重設自己的密碼 | `CANNOT_MODIFY_SELF` |
 | 系統中至少保留一位啟用中的 admin | `LAST_ADMIN_REQUIRED` |
 
-因為不能修改自己，依序操作時不可能把最後一位 admin 降級。真正的風險是兩位 admin **同時**把對方降級，所以這個條件寫在同一條 UPDATE 中：
+因為不能修改自己，依序操作時不可能把最後一位 admin 降級。真正的風險是兩位 admin **同時**把對方降級。PostgreSQL 允許兩筆 UPDATE 並行，各自都會看到「對方還是 admin」，所以在同一個交易中先鎖住所有啟用中的 admin，再判斷與更新：
 
 ```sql
-UPDATE users SET role = 'readonly'
-WHERE id = :id
-  AND (SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1 AND id != :id) > 0
+BEGIN;
+SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE ORDER BY id FOR UPDATE;
+-- 除了 :id 之外還有其他啟用中的 admin，才執行：
+UPDATE users SET role = 'readonly' WHERE id = :id;
+COMMIT;
 ```
+
+後到的請求會在 `FOR UPDATE` 等待前一個交易 commit，再以最新的資料判斷，因此會被擋下（`LAST_ADMIN_REQUIRED`）。
 
 **修改密碼後，舊 token 立即失效**：簽發 token 時記錄當下的 `password_changed_at`，Guard 比對與資料庫是否一致。不使用 JWT 的 `iat` 比較，因為它只精確到秒，同一秒內修改密碼會判斷錯誤。自己修改密碼時，回應會附上新的 token，目前的畫面不會被登出。
 

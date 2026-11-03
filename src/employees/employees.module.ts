@@ -8,7 +8,6 @@ import { EmployeesService } from './employees.service.js';
 @Module({
   imports: [TypeOrmModule.forFeature([Employee])],
   controllers: [EmployeesController],
-  // 控制層 → 邏輯層 → 資料層
   providers: [EmployeesService, EmployeesRepository],
 })
 export class EmployeesModule {}

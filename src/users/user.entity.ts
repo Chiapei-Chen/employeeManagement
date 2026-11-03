@@ -36,12 +36,16 @@ export class User {
    * 簽發 token 時會把這個值放進 token，JwtAuthGuard 比對不一致就拒絕，
    * 所以修改密碼之後，之前簽發的 token 全部失效。
    */
-  @Column({ name: 'password_changed_at', type: 'datetime', nullable: true })
+  @Column({
+    name: 'password_changed_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
   passwordChangedAt: Date | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }

@@ -1,6 +1,6 @@
 /**
  * 員工資料的業務規則，寫成不依賴 Nest / DB 的純函式：
- * - 規則集中一處，新增與修改共用
+ * - 規則集中一處
  * - 不用啟動 app、不用 mock repository 就能做 unit test
  */
 import type { FieldError } from '../common/errors/error-codes.js';

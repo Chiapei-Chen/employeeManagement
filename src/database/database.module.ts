@@ -1,5 +1,3 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -15,20 +13,14 @@ import { migrations } from './migrations/index.js';
   imports: [
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService<AppConfig, true>) => {
-        const database = config.get('database.path', { infer: true });
-        if (database !== ':memory:') {
-          mkdirSync(dirname(database), { recursive: true });
-        }
-        return {
-          type: 'better-sqlite3',
-          database,
-          autoLoadEntities: true,
-          synchronize: false,
-          migrations,
-          migrationsRun: true,
-        };
-      },
+      useFactory: (config: ConfigService<AppConfig, true>) => ({
+        type: 'postgres',
+        url: config.get('database.url', { infer: true }),
+        autoLoadEntities: true,
+        synchronize: false,
+        migrations,
+        migrationsRun: true,
+      }),
     }),
   ],
 })

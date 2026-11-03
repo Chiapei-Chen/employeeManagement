@@ -53,7 +53,7 @@ export type UpdateEmployeeDb = Partial<
   >
 >;
 
-/** LIKE 查詢時把使用者輸入的 % _ 當成一般字元，而不是萬用字元 */
+/** ILIKE 查詢時把使用者輸入的 % _ 當成一般字元，而不是萬用字元 */
 function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
@@ -81,10 +81,10 @@ export class EmployeesRepository {
     // 依照有填的條件組出查詢，沒填的條件不加入
     const qb = this.repo.createQueryBuilder('e');
 
-    // 關鍵字：模糊比對姓名、Email、員工編號
+    // 關鍵字：模糊比對姓名、Email、員工編號（ILIKE 不分大小寫）
     if (keyword) {
       qb.andWhere(
-        `(e.name LIKE :kw ESCAPE '\\' OR e.email LIKE :kw ESCAPE '\\' OR e.employeeNo LIKE :kw ESCAPE '\\')`,
+        `(e.name ILIKE :kw ESCAPE '\\' OR e.email ILIKE :kw ESCAPE '\\' OR e.employeeNo ILIKE :kw ESCAPE '\\')`,
         { kw: `%${escapeLike(keyword)}%` },
       );
     }

@@ -4,8 +4,12 @@ import request from 'supertest';
 import type { Server as App } from 'node:http';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
+import { createTestDatabase } from './setup-db.js';
 
+/** 每次呼叫都會使用一個新的資料庫，由 migration 建立 schema 並寫入 seed 資料 */
 export async function createTestApp(): Promise<INestApplication<App>> {
+  // 設定檔在 compile 時才讀取環境變數，所以在這之前設定
+  process.env.DATABASE_URL = await createTestDatabase();
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();

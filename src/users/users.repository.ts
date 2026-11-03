@@ -67,28 +67,28 @@ export class UsersRepository {
   /**
    * 帳號-資料庫-更新（必須保留至少一位啟用中的 admin）
    * 只有「其他啟用中的 admin 數量 > 0」時才會更新；否則不更新，回傳 false
-   * 判斷與更新寫在同一條 UPDATE，兩個請求同時進來時，也不會把 admin 全部降級
+   *
+   * 兩位 admin 同時把對方降級時，PostgreSQL 允許兩筆 UPDATE 並行，
+   * 若只用「UPDATE ... WHERE (其他 admin 數量) > 0」，兩邊都會看到對方還是 admin 而全部降級。
+   * 所以在交易中先用 FOR UPDATE 鎖住所有啟用中的 admin：
+   * 後到的請求會等前一個交易 commit，再以最新的資料判斷。
    */
   async updateIfOtherAdminExists(
     id: number,
     changes: UpdateUserDb,
   ): Promise<boolean> {
-    const otherActiveAdmins = this.repo
-      .createQueryBuilder()
-      .subQuery()
-      .select('COUNT(*)')
-      .from(User, 'u')
-      .where('u.role = :admin AND u.is_active = 1 AND u.id != :id')
-      .getQuery();
+    return this.repo.manager.transaction(async (manager) => {
+      const activeAdmins = await manager
+        .createQueryBuilder(User, 'u')
+        .select('u.id')
+        .where('u.role = :admin AND u.isActive = TRUE', { admin: Role.Admin })
+        .orderBy('u.id') // 固定上鎖順序，避免 deadlock
+        .setLock('pessimistic_write')
+        .getMany();
+      if (!activeAdmins.some((u) => u.id !== id)) return false;
 
-    const result = await this.repo
-      .createQueryBuilder()
-      .update(User)
-      .set(changes)
-      .where('id = :id')
-      .andWhere(`${otherActiveAdmins} > 0`)
-      .setParameters({ id, admin: Role.Admin })
-      .execute();
-    return !!result.affected;
+      const result = await manager.update(User, id, changes);
+      return !!result.affected;
+    });
   }
 }

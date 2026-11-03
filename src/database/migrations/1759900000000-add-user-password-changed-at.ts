@@ -6,7 +6,7 @@ export class AddUserPasswordChangedAt1759900000000 implements MigrationInterface
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "users" ADD COLUMN "password_changed_at" datetime`,
+      `ALTER TABLE "users" ADD "password_changed_at" TIMESTAMP WITH TIME ZONE`,
     );
   }
 

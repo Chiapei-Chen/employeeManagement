@@ -3,7 +3,7 @@
  */
 export interface AppConfig {
   port: number;
-  database: { path: string };
+  database: { url: string };
   jwt: { secret: string; expiresInSeconds: number };
   seedDemoData: boolean;
   loginThrottle: { limit: number; ttlMs: number };
@@ -30,7 +30,11 @@ export default (): AppConfig => {
 
   return {
     port: toInt('PORT', env.PORT, 3000),
-    database: { path: env.DATABASE_PATH ?? 'data/employee.sqlite' },
+    database: {
+      url:
+        env.DATABASE_URL ??
+        'postgres://postgres:postgres@localhost:5432/employee',
+    },
     jwt: {
       secret: jwtSecret,
       expiresInSeconds: toInt('JWT_EXPIRES_IN', env.JWT_EXPIRES_IN, 3600),

@@ -16,7 +16,7 @@ npm run test:e2e    # e2e test：79 個
 
 **唯一的例外是 `employees.service.spec.ts`**：它只測「事先檢查通過，但寫入時被 DB unique index 擋下」時，service 會把資料層的 `UniqueConstraintException` 轉成正確的業務錯誤碼。這只有在兩個請求同時送出時才會發生，e2e 無法穩定重現：請求會被依序處理，第二個在事先檢查就被擋下。所以這裡用 stub 讓資料層直接丟出例外。
 
-**E2E 的設定**：每個測試檔使用獨立的 in-memory SQLite；資料庫由 migration 建立並寫入 seed 資料；使用與 `main.ts` 相同的 `configureApp()`。與正式環境的啟動流程一致。
+**E2E 的設定**：每個測試檔使用一個獨立的暫時 PostgreSQL 資料庫（[test/setup-db.ts](../test/setup-db.ts)，測試前建立、結束後刪除），需要先啟動 PostgreSQL（`docker compose up -d`）；資料庫由 migration 建立並寫入 seed 資料；使用與 `main.ts` 相同的 `configureApp()`。與正式環境的啟動流程一致。
 
 ## 涵蓋範圍
 

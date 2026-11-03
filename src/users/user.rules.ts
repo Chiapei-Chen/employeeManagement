@@ -13,6 +13,11 @@ import {
  */
 export const PASSWORD_RULE = { minLength: 8, maxBytes: 72 } as const;
 
+/**
+ * 自訂的 class-validator 驗證：字串以 UTF-8 編碼後不可超過 max bytes。
+ * 內建的 MaxLength 計算的是字元數，但 bcrypt 的限制是 bytes，
+ * 中文在 UTF-8 佔 3 bytes，用字元數判斷會讓超過 72 bytes 的密碼通過驗證。
+ */
 function MaxUtf8Bytes(max: number): PropertyDecorator {
   return (target: object, propertyKey: string | symbol) =>
     registerDecorator({
@@ -28,6 +33,10 @@ function MaxUtf8Bytes(max: number): PropertyDecorator {
     });
 }
 
+/**
+ * 密碼欄位的驗證 decorator，把最短長度與最大 bytes 兩個檢查合成一個。
+ * 用在建立帳號、重設密碼、修改自己的密碼三個 DTO 的密碼欄位上。
+ */
 export const IsValidPassword = () =>
   applyDecorators(
     MinLength(PASSWORD_RULE.minLength),
