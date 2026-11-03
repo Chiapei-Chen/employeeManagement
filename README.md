@@ -39,7 +39,7 @@ cd frontend && npm install && npm run dev     # http://localhost:5173
 
 # 測試
 npm test                      # unit：26 個
-npm run test:e2e              # e2e：79 個
+npm run test:e2e              # e2e：86 個（需先 docker compose up -d）
 ```
 
 | 展示帳號 | 密碼 | 角色 |

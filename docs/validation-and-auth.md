@@ -100,14 +100,6 @@ POST /auth/logout → 清除 refresh token cookie
 >
 > 目前的限制：refresh token 是無狀態的 JWT，登出只會清掉瀏覽器的 cookie，伺服器沒有記錄。如果 cookie 在登出前就被複製走，在過期前仍然可以使用（修改密碼或停用帳號會讓它立即失效）。若需要「登出後伺服器端也立即作廢」，要把 refresh token 存進資料庫並在登出時刪除。
 
----|---|---|
-> | token 怎麼送出 | 前端每次手動加上 | 瀏覽器自動帶上 |
-> | JavaScript 讀得到 token 嗎 | 讀得到，有 XSS 時可能被偷 | 讀不到 |
-> | CSRF 風險 | 沒有，其他網站無法替使用者加上 header | 有，需要 `SameSite` 或 CSRF token 防範 |
-> | 非瀏覽器的 client（App、其他服務） | 容易使用 | 處理 cookie 較麻煩 |
->
-> 本專案選擇 header：設定簡單，用 Swagger、Postman 測試都很直觀，也不需要處理 CSRF。若是正式上線、只給瀏覽器使用的系統，會考慮改用 HttpOnly cookie 來防止 token 被 XSS 竊取，並同時加上 CSRF 防護。
-
 ---
 
 ## 三、授權
