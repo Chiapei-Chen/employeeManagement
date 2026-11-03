@@ -71,9 +71,10 @@ POST /auth/login { username, password }
 重新整理頁面，或 access token 過期（API 回 401）：
 POST /auth/refresh（瀏覽器自動帶上 refresh token cookie）
   → 驗證 refresh token、帳號仍啟用、密碼未修改
+  → 資料庫：這張標記為已使用（用過的又被拿來用 → 整個 family 作廢）
   → 簽發新的 access token，並換發新的 refresh token cookie
 
-POST /auth/logout → 清除 refresh token cookie
+POST /auth/logout → 資料庫：作廢整個 family，並清除 refresh token cookie
 ```
 
 | 作法 | 防範什麼 |
@@ -98,7 +99,23 @@ POST /auth/logout → 清除 refresh token cookie
 > 一般 API 仍使用 Authorization header，所以 Swagger、Postman 的測試方式不變。
 > 兩種 token 用 `typ` 欄位區分，refresh token 不能拿來呼叫一般 API，反之亦然。
 >
-> 目前的限制：refresh token 是無狀態的 JWT，登出只會清掉瀏覽器的 cookie，伺服器沒有記錄。如果 cookie 在登出前就被複製走，在過期前仍然可以使用（修改密碼或停用帳號會讓它立即失效）。若需要「登出後伺服器端也立即作廢」，要把 refresh token 存進資料庫並在登出時刪除。
+> **補充：refresh token 存在資料庫**
+>
+> access token 是無狀態的 JWT（效期短，只驗簽章）；refresh token 效期長，所以每一張都記錄在 `refresh_tokens` 資料表，伺服器可以單獨作廢某一張。
+> 資料庫只存 token 的 id（JWT 的 `jti`），不存 token 本身：資料庫外洩時，沒有 JWT secret 也無法偽造 token。
+>
+> | 情境 | 處理方式 |
+> |---|---|
+> | 換發（refresh） | 舊的標記為已使用，新增下一張。每張只能換發一次 |
+> | 已經用過的又被拿來用 | 代表有兩個人持有同一張（可能被偷），伺服器分不出誰是本人 → 這次登入換發出來的 token（同一個 family）全部作廢，雙方都要重新登入 |
+> | 登出 | 作廢整個 family。即使 cookie 在登出前被複製走，複製的那份也不能用 |
+> | 同一個帳號在其他裝置的登入 | 屬於不同 family，不受影響 |
+>
+> - **為什麼是「標記已使用」而不是刪除**：刪除也能擋住舊的，但伺服器會分不出「從沒發過的 token」和「發過但已經用過的 token」，就無法偵測被偷。
+> - **寬限期 10 秒**：同一個瀏覽器的多個分頁共用同一個 cookie，同時重新整理時會拿同一張 token 來換。用過的 token 在 10 秒內再出現，仍然換發，不視為被偷。
+> - **同時換發**：在交易中用 `FOR UPDATE` 鎖住那一筆，兩個請求同時拿同一張 token 來換時，後到的會等前一個 commit 後再判斷。
+> - 過期的記錄在該帳號下次登入時清除。
+> - access token 仍是無狀態的：登出後，已簽發的 access token 在剩下的效期內（最多 15 分鐘）仍然可以使用，這是刻意的取捨。
 
 ---
 

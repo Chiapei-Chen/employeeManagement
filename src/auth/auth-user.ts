@@ -12,8 +12,10 @@ export interface JwtPayload {
   sub: number;
   username: string;
   pwd: number;
-  /** 區分兩種 token，避免 refresh token 被拿來當 access token 使用（反之亦然） */
+  /** 區分兩種 token，避免 refresh token 被拿來當 access token 使用 */
   typ: 'access' | 'refresh';
+  /** 只有 refresh token 有：對應 refresh_tokens 資料表的 id */
+  jti?: string;
 }
 
 export type AuthenticatedRequest = Request & { user?: AuthUser };

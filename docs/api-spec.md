@@ -29,7 +29,7 @@
 |---|---|---|---|
 | POST | `/auth/login` | 登入，取得 access token，並設定 refresh token cookie | 不需登入 |
 | POST | `/auth/refresh` | 用 refresh token cookie 換新的 access token | 不需登入（需要 cookie） |
-| POST | `/auth/logout` | 清除 refresh token cookie | 不需登入 |
+| POST | `/auth/logout` | 伺服器端作廢 refresh token，並清除 cookie | 不需登入 |
 | GET | `/auth/me` | 目前登入者與其權限 | 登入即可 |
 | PATCH | `/auth/me/password` | 修改自己的密碼 | 登入即可 |
 | GET | `/employees` | 員工列表（搜尋、篩選、分頁、排序） | `employee:read` |
@@ -160,19 +160,19 @@
 
 用 cookie 中的 refresh token 換新的 access token。前端在重新整理頁面、或其他 API 回 401（access token 過期）時呼叫。**不需要 Authorization header**，但必須帶上 `refresh_token` cookie。
 
-**Response 200**：格式與登入回應相同，並換發新的 refresh token cookie。
+**Response 200**：格式與登入回應相同，並換發新的 refresh token cookie。每張 refresh token 只能換發一次（10 秒內的重送除外，見 [validation-and-auth.md](validation-and-auth.md)）。
 
 **錯誤**
 
 | 狀態 | code | 情境 |
 |---|---|---|
-| 401 | UNAUTHORIZED | 沒有 cookie、refresh token 無效或過期、帳號已停用、密碼已被修改。同時清除 cookie |
+| 401 | UNAUTHORIZED | 沒有 cookie、refresh token 無效或過期、已作廢（登出）、已經用過（視為被偷，同一次登入換發的 token 全部作廢）、帳號已停用、密碼已被修改。同時清除 cookie |
 
 ---
 
 ## POST /auth/logout
 
-清除 refresh token cookie。**不需要登入**（access token 可能已經過期，仍要能登出）。
+在伺服器端作廢 refresh token（包含這次登入換發出來的所有 token），並清除 cookie。同一個帳號在其他裝置的登入不受影響。**不需要登入**（access token 可能已經過期，仍要能登出）；cookie 無效或已過期時一樣回 204。
 
 **Response 204**
 

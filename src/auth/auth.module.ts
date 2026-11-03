@@ -3,16 +3,20 @@ import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import type { AppConfig } from '../config/configuration.js';
 import { UsersModule } from '../users/users.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { PermissionsGuard } from './guards/permissions.guard.js';
+import { RefreshToken } from './refresh-token.entity.js';
+import { RefreshTokensRepository } from './refresh-tokens.repository.js';
 
 @Module({
   imports: [
     UsersModule,
+    TypeOrmModule.forFeature([RefreshToken]),
     // 簽發與驗證 token
     JwtModule.registerAsync({
       inject: [ConfigService],
@@ -39,6 +43,7 @@ import { PermissionsGuard } from './guards/permissions.guard.js';
   controllers: [AuthController],
   providers: [
     AuthService,
+    RefreshTokensRepository,
     // 註冊順序 = 執行順序：先確認身分，再檢查權限
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

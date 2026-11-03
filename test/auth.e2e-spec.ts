@@ -160,6 +160,91 @@ describe('Auth & authorization (e2e)', () => {
       const res = await http().post('/api/v1/auth/logout').expect(204);
       expect(refreshCookieOf(res)).toMatch(/refresh_token=;/);
     });
+
+    it('revokes the refresh token on the server when logging out', async () => {
+      const login = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'admin', password: 'Admin@123' })
+        .expect(200);
+      // 模擬登出前 cookie 已經被複製走
+      const copied = cookiePair(login);
+
+      await http()
+        .post('/api/v1/auth/logout')
+        .set('Cookie', copied)
+        .expect(204);
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', copied)
+        .expect(401);
+    });
+
+    it('rejects a used refresh token after the grace period and revokes the whole family', async () => {
+      const ds = app.get(DataSource);
+      const login = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'admin', password: 'Admin@123' })
+        .expect(200);
+      const first = cookiePair(login);
+      const rotated = await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', first)
+        .expect(200);
+      const second = cookiePair(rotated);
+
+      // 讓第一張超過寬限期
+      await ds.query(
+        `UPDATE refresh_tokens SET used_at = now() - interval '1 minute' WHERE used_at IS NOT NULL`,
+      );
+
+      const reused = await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', first)
+        .expect(401);
+      expect(reused.body.message).toMatch(/reuse/);
+      // 同一個 family 換發出來的也一起作廢
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', second)
+        .expect(401);
+    });
+
+    it('allows the same refresh token twice within the grace period (multiple tabs)', async () => {
+      const login = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'admin', password: 'Admin@123' })
+        .expect(200);
+      const cookie = cookiePair(login);
+
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookie)
+        .expect(200);
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookie)
+        .expect(200);
+    });
+
+    it('logging out does not affect other logins of the same account', async () => {
+      const a = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'admin', password: 'Admin@123' })
+        .expect(200);
+      const b = await http()
+        .post('/api/v1/auth/login')
+        .send({ username: 'admin', password: 'Admin@123' })
+        .expect(200);
+
+      await http()
+        .post('/api/v1/auth/logout')
+        .set('Cookie', cookiePair(a))
+        .expect(204);
+      await http()
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', cookiePair(b))
+        .expect(200);
+    });
   });
 
   describe('authentication on protected routes', () => {
@@ -185,7 +270,9 @@ describe('Auth & authorization (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      await ds.query(`UPDATE users SET is_active = FALSE WHERE username = 'temp'`);
+      await ds.query(
+        `UPDATE users SET is_active = FALSE WHERE username = 'temp'`,
+      );
       await http()
         .get('/api/v1/auth/me')
         .set('Authorization', `Bearer ${token}`)

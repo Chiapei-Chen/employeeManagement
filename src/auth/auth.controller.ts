@@ -91,14 +91,20 @@ export class AuthController {
   }
 
   /**
-   * 登出：清除 refresh token cookie
-   * 不需要登入：access token 可能已經過期，仍要能清掉 cookie
+   * 登出：伺服器端作廢 refresh token，並清除 cookie
+   * 只清 cookie 不夠：cookie 若在登出前被複製走，複製的那份仍然可以使用
+   * 不需要登入：access token 可能已經過期，仍要能登出
    */
   @Post('logout')
   @Public()
   @HttpCode(204)
+  @ApiCookieAuth(REFRESH_COOKIE)
   @ApiNoContentResponse()
-  logout(@Res({ passthrough: true }) res: Response): void {
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.authService.logout(readRefreshCookie(req));
     clearRefreshCookie(res, this.cookieSecure());
   }
 
