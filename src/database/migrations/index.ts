@@ -1,10 +1,12 @@
 import { InitSchema1759800000000 } from './1759800000000-init-schema.js';
 import { AddUserPasswordChangedAt1759900000000 } from './1759900000000-add-user-password-changed-at.js';
 import { AddRefreshTokens1760000000000 } from './1760000000000-add-refresh-tokens.js';
+import { AddUserLoginLockout1760100000000 } from './1760100000000-add-user-login-lockout.js';
 
 /** 依時間順序列出所有 migration（ESM 下不使用 glob 字串載入，改為明確 import） */
 export const migrations = [
   InitSchema1759800000000,
   AddUserPasswordChangedAt1759900000000,
   AddRefreshTokens1760000000000,
+  AddUserLoginLockout1760100000000,
 ];

@@ -2,7 +2,7 @@
 
 ```bash
 npm test            # unit test：26 個
-npm run test:e2e    # e2e test：86 個
+npm run test:e2e    # e2e test：98 個
 ```
 
 ## 策略
@@ -24,7 +24,7 @@ npm run test:e2e    # e2e test：86 個
 |---|---|
 | `auth.e2e-spec.ts` | 登入成功與失敗（相同的錯誤訊息）、偽造的 token、**帳號停用後舊 token 立即失效**、**refresh token cookie 的屬性、換發與失效，access / refresh token 不能互相冒用**、權限矩陣、**migration 與 entity 一致** |
 | `employees.e2e-spec.ts` | 列表的篩選、排序、分頁與各種 400；新增的正規化與重複檢查；**同時新增相同 Email 只有一個成功**；**樂觀鎖**；狀態轉換；**合併後的日期檢查** |
-| `users.e2e-spec.ts` | readonly 無法管理帳號；不能修改自己；**兩位 admin 同時降級對方，最後剩一位**；**修改或重設密碼後舊 token 失效** |
+| `users.e2e-spec.ts` | readonly 無法管理帳號；不能修改自己；**兩位 admin 同時降級對方，最後剩一位**；**修改或重設密碼後舊 token 失效**；**連續輸錯密碼鎖定（含同時送出的錯誤嘗試）、成功登入歸零、到期與管理者解鎖** |
 
 ## 手動驗證
 

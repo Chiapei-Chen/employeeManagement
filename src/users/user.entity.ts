@@ -43,6 +43,17 @@ export class User {
   })
   passwordChangedAt: Date | null;
 
+  /** 連續登入失敗次數；登入成功、被鎖定、或管理者解鎖時歸零 */
+  @Column({ name: 'failed_login_count', type: 'integer', default: 0 })
+  failedLoginCount: number;
+
+  /**
+   * 鎖定到這個時間為止（null 或已經過去表示沒有鎖定）。
+   * 只做暫時鎖定：攻擊者可以故意輸錯來鎖住別人的帳號，永久鎖定會讓這種攻擊更有效。
+   */
+  @Column({ name: 'locked_until', type: 'timestamptz', nullable: true })
+  lockedUntil: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -178,6 +178,8 @@ export const api = {
     request<ManagedUser>('PATCH', `/users/${id}`, input),
   resetUserPassword: (id: number, newPassword: string) =>
     request<null>('POST', `/users/${id}/reset-password`, { newPassword }),
+  unlockUser: (id: number) =>
+    request<ManagedUser>('POST', `/users/${id}/unlock`),
 
   listEmployees: (query: EmployeeQuery) => {
     // 空字串的條件不送出，否則後端會把 "" 當成「部門等於空字串」

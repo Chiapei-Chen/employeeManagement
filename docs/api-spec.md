@@ -40,6 +40,7 @@
 | POST | `/users` | 建立帳號 | `user:manage` |
 | PATCH | `/users/:id` | 修改角色、停用 / 啟用 | `user:manage` |
 | POST | `/users/:id/reset-password` | 管理者重設他人密碼 | `user:manage` |
+| POST | `/users/:id/unlock` | 解除連續輸錯密碼造成的登入鎖定 | `user:manage` |
 
 ---
 
@@ -117,7 +118,9 @@
 
 使用帳號密碼取得 access token。**不需要登入**。
 
-**限流**：同一個 IP 每 60 秒最多 5 次（成功的登入也會計入），超過回 429。
+**限流**：分成兩層（詳見 [validation-and-auth.md](validation-and-auth.md#二登入)）
+- 同一個 IP 每 60 秒最多 20 次（成功的登入也會計入），超過回 429
+- 同一個帳號連續輸錯 5 次，鎖定 15 分鐘。鎖定期間即使密碼正確也回 `401 INVALID_CREDENTIALS`，與密碼錯誤相同，不透露帳號已被鎖定
 
 **Request**
 ```json
@@ -195,7 +198,7 @@
 
 修改**自己**的密碼。
 
-**權限**：登入即可　**限流**：與登入計算方式相同，每個 IP 每分鐘 5 次（這支 API 需要驗證目前的密碼，不限流的話可以被用來猜密碼）
+**權限**：登入即可　**限流**：與登入共用 IP 限流，每個 IP 每分鐘 20 次（這支 API 需要驗證目前的密碼，不限流的話可以被用來猜密碼）
 
 **Request**
 ```json
@@ -419,12 +422,13 @@ GET /api/v1/employees?department=Engineering&status=active&sortBy=hireDate&sortO
   "role": "readonly",
   "isActive": true,
   "passwordChangedAt": null,
+  "lockedUntil": null,
   "createdAt": "2026-10-07T02:22:49.000Z",
   "updatedAt": "2026-10-07T02:22:49.000Z"
 }
 ```
 
-**任何回應都不會包含 `passwordHash`。**
+**任何回應都不會包含 `passwordHash`。** `lockedUntil` 不是 `null` 且晚於現在，表示帳號因連續輸錯密碼而被暫時鎖定。
 
 ### GET /users
 
@@ -484,6 +488,18 @@ GET /api/v1/employees?department=Engineering&status=active&sortBy=hireDate&sortO
 | 400 | VALIDATION_FAILED | 密碼長度不符 |
 | 404 | USER_NOT_FOUND | 帳號不存在 |
 | 409 | CANNOT_MODIFY_SELF | 重設的是自己。自己的密碼請用 `PATCH /auth/me/password`（需要輸入目前的密碼） |
+
+重設密碼也會一併解除登入鎖定：密碼已經換掉，之前猜錯的次數就沒有意義了。
+
+### POST /users/:id/unlock
+
+解除帳號因連續輸錯密碼造成的登入鎖定，並把失敗次數歸零。鎖定可能是對方自己忘記密碼，也可能是有人故意輸錯來鎖住帳號；管理者可以不必等鎖定時間結束。帳號沒有被鎖定時呼叫也會成功（結果相同）。
+
+**Response 200**：更新後的帳號資料，`lockedUntil` 為 `null`。
+
+| 狀態 | code | 情境 |
+|---|---|---|
+| 404 | USER_NOT_FOUND | 帳號不存在 |
 
 ### 不提供刪除
 

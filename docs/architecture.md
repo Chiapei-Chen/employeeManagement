@@ -42,7 +42,7 @@
 | 授權 | `PermissionsGuard`（全域） |
 | 輸入驗證 | 全域 `ValidationPipe`（`whitelist`、`forbidNonWhitelisted`、`transform`） |
 | 錯誤處理 | 各層丟出 `AppException.of(ErrorCode.XXX)`，HTTP 狀態碼與預設訊息集中定義在 `ERROR_DEFINITIONS`（`error-codes.ts`）；全域 `HttpExceptionFilter` 統一回應格式 |
-| 登入限流 | `ThrottlerGuard`，只套用在需要驗證密碼的 endpoint |
+| 登入限流 | 兩層：`ThrottlerGuard` 依 IP 限流，只套用在需要驗證密碼的 endpoint；`AuthService` 依帳號計算連續失敗次數並暫時鎖定 |
 
 這些全域設定寫在 `app.setup.ts`，`main.ts` 與 e2e 測試共用，確保測試的行為與正式環境相同。
 
@@ -85,8 +85,10 @@ erDiagram
 | password_hash | varchar(100) | bcrypt，不儲存明碼 |
 | role | varchar(20) | CHECK IN (`admin`, `readonly`) |
 | is_active | boolean | 停用後，已簽發的 token 立即失效 |
-| password_changed_at | datetime NULL | 修改密碼後，之前簽發的 token 失效 |
-| created_at / updated_at | datetime | |
+| password_changed_at | timestamptz NULL | 修改密碼後，之前簽發的 token 失效 |
+| failed_login_count | integer DEFAULT 0 | 連續登入失敗次數；登入成功、鎖定、解鎖時歸零 |
+| locked_until | timestamptz NULL | 連續失敗達到上限時，鎖定到這個時間 |
+| created_at / updated_at | timestamptz | |
 
 ### `employees`
 

@@ -32,6 +32,7 @@ export interface ManagedUser {
   role: Role
   isActive: boolean
   passwordChangedAt: string | null
+  lockedUntil: string | null
   createdAt: string
   updatedAt: string
 }

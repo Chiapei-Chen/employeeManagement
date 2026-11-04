@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import type { Server as App } from 'node:http';
 import request from 'supertest';
+import { DataSource } from 'typeorm';
 import { Role } from '../src/auth/permissions.js';
 import { UsersService } from '../src/users/users.service.js';
 import { createTestApp, loginAs } from './helpers.js';
@@ -49,6 +50,7 @@ describe('Users / account management (e2e)', () => {
       await v
         .post('/api/v1/users/1/reset-password', { newPassword: 'Whatever@123' })
         .expect(403);
+      await v.post('/api/v1/users/1/unlock').expect(403);
     });
 
     it('admin has user:manage in /auth/me', async () => {
@@ -364,6 +366,110 @@ describe('Users / account management (e2e)', () => {
         .patch('/api/v1/auth/me/password')
         .send({ currentPassword: 'a', newPassword: 'Changed@123' })
         .expect(401);
+    });
+  });
+
+  /** 設定的預設值：連續失敗 5 次鎖定 */
+  describe('login lockout', () => {
+    const MAX_FAILURES = 5;
+    const login = (username: string, password: string) =>
+      http().post('/api/v1/auth/login').send({ username, password });
+
+    async function failLogins(username: string, times: number) {
+      for (let i = 0; i < times; i++) {
+        await login(username, 'Wrong@123').expect(401);
+      }
+    }
+
+    it('locks the account after consecutive failures, rejecting even the correct password with the same error', async () => {
+      const u = await createUser();
+      const wrong = await login(u.username, 'Wrong@123').expect(401);
+      await failLogins(u.username, MAX_FAILURES - 1);
+
+      const res = await login(u.username, u.password).expect(401);
+      // 與密碼錯誤相同，不透露帳號已被鎖定
+      expect(res.body).toMatchObject({
+        code: wrong.body.code,
+        message: wrong.body.message,
+      });
+
+      const list = await as(adminToken).get('/api/v1/users').expect(200);
+      const row = list.body.find((x: { id: number }) => x.id === u.id);
+      expect(new Date(row.lockedUntil).getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('a successful login resets the failure count', async () => {
+      const u = await createUser();
+      await failLogins(u.username, MAX_FAILURES - 1);
+      await login(u.username, u.password).expect(200);
+      await failLogins(u.username, MAX_FAILURES - 1);
+      await login(u.username, u.password).expect(200);
+    });
+
+    it('counts concurrent failures correctly (single atomic UPDATE)', async () => {
+      const u = await createUser();
+      await Promise.all(
+        Array.from({ length: MAX_FAILURES }, () =>
+          login(u.username, 'Wrong@123').expect(401),
+        ),
+      );
+      await login(u.username, u.password).expect(401);
+    });
+
+    it('allows logging in again once the lock expires', async () => {
+      const u = await createUser();
+      await failLogins(u.username, MAX_FAILURES);
+      await login(u.username, u.password).expect(401);
+
+      // 不實際等待 15 分鐘，直接把鎖定時間改成過去
+      await app
+        .get(DataSource)
+        .query(
+          `UPDATE users SET locked_until = now() - interval '1 second' WHERE id = $1`,
+          [u.id],
+        );
+      await login(u.username, u.password).expect(200);
+    });
+
+    it('admin can unlock the account immediately', async () => {
+      const u = await createUser();
+      await failLogins(u.username, MAX_FAILURES);
+
+      const res = await as(adminToken)
+        .post(`/api/v1/users/${u.id}/unlock`)
+        .expect(200);
+      expect(res.body).toMatchObject({ id: u.id, lockedUntil: null });
+      await login(u.username, u.password).expect(200);
+    });
+
+    it('resetting the password also unlocks the account', async () => {
+      const u = await createUser();
+      await failLogins(u.username, MAX_FAILURES);
+
+      await as(adminToken)
+        .post(`/api/v1/users/${u.id}/reset-password`, {
+          newPassword: 'Reset@12345',
+        })
+        .expect(204);
+      await login(u.username, 'Reset@12345').expect(200);
+    });
+
+    it('the seeded "locked" demo account cannot log in until an admin unlocks it', async () => {
+      await login('locked', 'Locked@123').expect(401);
+
+      const list = await as(adminToken).get('/api/v1/users').expect(200);
+      const row = list.body.find(
+        (x: { username: string }) => x.username === 'locked',
+      );
+      await as(adminToken).post(`/api/v1/users/${row.id}/unlock`).expect(200);
+      await login('locked', 'Locked@123').expect(200);
+    });
+
+    it('404 when unlocking a nonexistent account', async () => {
+      const res = await as(adminToken)
+        .post('/api/v1/users/99999/unlock')
+        .expect(404);
+      expect(res.body.code).toBe('USER_NOT_FOUND');
     });
   });
 });

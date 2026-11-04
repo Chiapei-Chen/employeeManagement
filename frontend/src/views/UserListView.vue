@@ -94,6 +94,21 @@ async function toggleActive(target: ManagedUser) {
   await update(target, { isActive: !target.isActive })
 }
 
+// ---- 解除鎖定 ----
+// 只在載入列表時判斷；鎖定時間到了會自動解除，重新整理就會更新
+const isLocked = (u: ManagedUser) => !!u.lockedUntil && new Date(u.lockedUntil) > new Date()
+
+async function unlock(target: ManagedUser) {
+  if (!confirm(`確定要解除 ${target.username} 的登入鎖定？`)) return
+  banner.value = null
+  try {
+    replace(await api.unlockUser(target.id))
+    banner.value = { type: 'success', text: `已解除 ${target.username} 的登入鎖定` }
+  } catch (e) {
+    banner.value = { type: 'error', text: describeError(e).message }
+  }
+}
+
 // ---- 重設密碼 ----
 const resetting = ref<ManagedUser | null>(null)
 const newPassword = ref('')
@@ -174,6 +189,14 @@ onMounted(load)
             <span class="status" :class="u.isActive ? 'active' : 'resigned'">
               {{ u.isActive ? '啟用' : '停用' }}
             </span>
+            <span
+              v-if="isLocked(u)"
+              class="status on_leave"
+              style="margin-left: 4px"
+              :title="`連續輸錯密碼，鎖定到 ${new Date(u.lockedUntil!).toLocaleString()}`"
+            >
+              鎖定中
+            </span>
           </td>
           <td>{{ u.passwordChangedAt ? new Date(u.passwordChangedAt).toLocaleString() : '—' }}</td>
           <td>{{ new Date(u.createdAt).toLocaleDateString() }}</td>
@@ -184,6 +207,9 @@ onMounted(load)
                   {{ u.isActive ? '停用' : '啟用' }}
                 </button>
                 <button class="secondary small" @click="openReset(u)">重設密碼</button>
+                <button v-if="isLocked(u)" class="secondary small" @click="unlock(u)">
+                  解除鎖定
+                </button>
               </template>
               <RouterLink v-else to="/me/password">修改我的密碼</RouterLink>
             </div>

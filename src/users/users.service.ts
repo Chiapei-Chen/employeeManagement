@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { AuthUser } from '../auth/auth-user.js';
 import { Role } from '../auth/permissions.js';
 import { UniqueConstraintException } from '../common/database/unique-violation.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
+import type { AppConfig } from '../config/configuration.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 import { UserResponseDto } from './dto/user-response.dto.js';
@@ -17,7 +19,10 @@ import { UsersRepository } from './users.repository.js';
  */
 @Injectable()
 export class UsersService {
-  constructor(private readonly usersRepository: UsersRepository) {}
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    private readonly config: ConfigService<AppConfig, true>,
+  ) {}
 
   // ---- 給 Auth 使用 ----
 
@@ -35,14 +40,33 @@ export class UsersService {
   /** 帳號-設定密碼，之前簽發的 token 全部失效 */
   async setPassword(id: number, newPassword: string): Promise<User> {
     // db, 更新密碼與 passwordChangedAt
+    // 密碼已經換掉，之前猜錯的次數沒有意義，一併解除鎖定（例如管理者重設被鎖住的帳號）
     await this.usersRepository.update(id, {
       passwordHash: await hashPassword(newPassword),
       passwordChangedAt: new Date(),
+      failedLoginCount: 0,
+      lockedUntil: null,
     });
 
     // db, 重新取得帳號資料
     // 簽發新 token 時，要放入與資料庫完全相同的 passwordChangedAt
     return this.getEntityOrThrow(id);
+  }
+
+  /** 帳號-記錄一次登入失敗，連續失敗達到上限就暫時鎖定 */
+  async recordLoginFailure(id: number): Promise<void> {
+    const { maxFailures, durationMs } = this.config.get('loginLockout', {
+      infer: true,
+    });
+    await this.usersRepository.recordLoginFailure(id, maxFailures, durationMs);
+  }
+
+  /** 帳號-清除登入失敗次數與鎖定（登入成功時） */
+  async clearLoginFailures(id: number): Promise<void> {
+    await this.usersRepository.update(id, {
+      failedLoginCount: 0,
+      lockedUntil: null,
+    });
   }
 
   // ---- 帳號管理 ----
@@ -146,6 +170,22 @@ export class UsersService {
 
     // db, 設定新密碼
     await this.setPassword(id, newPassword);
+  }
+
+  /**
+   * 帳號-解除登入鎖定
+   * 鎖定可能是對方自己忘記密碼，也可能是有人故意輸錯來鎖住帳號，
+   * 讓管理者不必等鎖定時間結束
+   */
+  async unlock(id: number): Promise<UserResponseDto> {
+    // 判斷 帳號是否存在
+    await this.getEntityOrThrow(id);
+
+    // db, 清除失敗次數與鎖定
+    await this.clearLoginFailures(id);
+
+    // db, 取得更新後的帳號資料並回傳
+    return UserResponseDto.from(await this.getEntityOrThrow(id));
   }
 
   /** 取得帳號資料，不存在就丟出錯誤 */

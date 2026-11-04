@@ -39,13 +39,14 @@ cd frontend && npm install && npm run dev     # http://localhost:5173
 
 # 測試
 npm test                      # unit：26 個
-npm run test:e2e              # e2e：86 個（需先 docker compose up -d）
+npm run test:e2e              # e2e：98 個（需先 docker compose up -d）
 ```
 
 | 展示帳號 | 密碼 | 角色 |
 |---|---|---|
 | `admin` | `Admin@123` | admin：讀取、新增、修改員工；管理帳號 |
 | `viewer` | `Viewer@123` | readonly：只能讀取員工 |
+| `locked` | `Locked@123` | readonly，**已被鎖定**：展示連續輸錯密碼的鎖定，用正確的密碼也無法登入；以 admin 在「帳號管理」按「解除鎖定」後即可登入 |
 
 **使用 Swagger 測試 API**（http://localhost:3000/api/docs）
 

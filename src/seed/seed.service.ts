@@ -13,9 +13,27 @@ import { hashPassword } from '../users/password.js';
 import { User } from '../users/user.entity.js';
 
 export const DEMO_USERS = [
-  { username: 'admin', password: 'Admin@123', role: Role.Admin },
-  { username: 'viewer', password: 'Viewer@123', role: Role.Readonly },
+  { username: 'admin', password: 'Admin@123', role: Role.Admin, locked: false },
+  {
+    username: 'viewer',
+    password: 'Viewer@123',
+    role: Role.Readonly,
+    locked: false,
+  },
+  // 展示「連續輸錯密碼被鎖定」：用正確的密碼也無法登入，需由 admin 在帳號管理解除鎖定
+  {
+    username: 'locked',
+    password: 'Locked@123',
+    role: Role.Readonly,
+    locked: true,
+  },
 ] as const;
+
+/**
+ * 展示帳號的鎖定時間。實際鎖定只有 15 分鐘，展示用的設長一點，
+ * 避免準備展示時鎖定已經自己解除（seed 只在資料表為空時執行一次）。
+ */
+const DEMO_LOCK_MS = 365 * 24 * 60 * 60_000;
 
 const DEMO_EMPLOYEES: Array<Partial<Employee>> = [
   {
@@ -119,6 +137,7 @@ export class SeedService implements OnApplicationBootstrap {
         username: u.username,
         passwordHash: await hashPassword(u.password),
         role: u.role,
+        lockedUntil: u.locked ? new Date(Date.now() + DEMO_LOCK_MS) : null,
       })),
     );
 

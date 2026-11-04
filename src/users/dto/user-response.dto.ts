@@ -8,6 +8,8 @@ export class UserResponseDto {
   role: Role;
   isActive: boolean;
   passwordChangedAt: Date | null;
+  /** 連續登入失敗而被鎖定到這個時間；null 或已過去表示沒有鎖定 */
+  lockedUntil: Date | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -18,6 +20,7 @@ export class UserResponseDto {
       role: user.role,
       isActive: user.isActive,
       passwordChangedAt: user.passwordChangedAt,
+      lockedUntil: user.lockedUntil,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

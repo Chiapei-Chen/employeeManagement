@@ -50,13 +50,27 @@ export class AuthService {
     const user = await this.usersService.getByUsername(username);
 
     // 比對密碼
-    // 帳號不存在時也比對一次，讓回應時間相近，避免被猜出哪些帳號存在
+    // 帳號不存在、已鎖定時也比對一次，讓回應時間相近，避免被猜出哪些帳號存在或已被鎖定
     const passwordOk = await verifyPassword(password, user?.passwordHash);
 
-    // 判斷 帳號是否存在、密碼是否正確、帳號是否啟用
-    // 三種情況回傳同一個錯誤，不透露是哪一種
-    if (!user || !passwordOk || !user.isActive) {
+    // 判斷 帳號是否存在、是否啟用、是否鎖定中
+    // 鎖定中即使密碼正確也拒絕，否則攻擊者在鎖定期間仍然可以繼續猜
+    // 與密碼錯誤回傳同一個錯誤，不透露是哪一種
+    const locked = !!user?.lockedUntil && user.lockedUntil > new Date();
+    if (!user || !user.isActive || locked) {
       throw AppException.of(ErrorCode.InvalidCredentials);
+    }
+
+    // 判斷 密碼是否正確
+    // 錯誤時記錄失敗次數，連續失敗達到上限就暫時鎖定
+    if (!passwordOk) {
+      await this.usersService.recordLoginFailure(user.id);
+      throw AppException.of(ErrorCode.InvalidCredentials);
+    }
+
+    // 登入成功，清除之前的失敗次數
+    if (user.failedLoginCount > 0) {
+      await this.usersService.clearLoginFailures(user.id);
     }
 
     // 簽發 token

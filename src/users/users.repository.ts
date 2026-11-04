@@ -10,7 +10,15 @@ export type AddUserDb = Pick<User, 'username' | 'passwordHash' | 'role'>;
 
 /** 修改時要寫入的資料，只包含有變更的欄位 */
 export type UpdateUserDb = Partial<
-  Pick<User, 'role' | 'isActive' | 'passwordHash' | 'passwordChangedAt'>
+  Pick<
+    User,
+    | 'role'
+    | 'isActive'
+    | 'passwordHash'
+    | 'passwordChangedAt'
+    | 'failedLoginCount'
+    | 'lockedUntil'
+  >
 >;
 
 /**
@@ -62,6 +70,30 @@ export class UsersRepository {
   /** 帳號-資料庫-更新 */
   async update(id: number, changes: UpdateUserDb): Promise<void> {
     await this.repo.update(id, changes);
+  }
+
+  /**
+   * 帳號-資料庫-記錄一次登入失敗，達到上限就鎖定並把次數歸零
+   *
+   * 「+1、判斷是否達到上限、鎖定」寫在同一條 UPDATE：
+   * 若先讀出次數再寫回，同時送出的錯誤嘗試會讀到相同的舊值，次數就會少算。
+   * PostgreSQL 的 SET 中引用的欄位都是更新前的值，所以兩個 CASE 看到的 failed_login_count 相同。
+   */
+  async recordLoginFailure(
+    id: number,
+    maxFailures: number,
+    lockMs: number,
+  ): Promise<void> {
+    await this.repo.query(
+      `UPDATE users SET
+         failed_login_count = CASE WHEN failed_login_count + 1 >= $2
+                                   THEN 0 ELSE failed_login_count + 1 END,
+         locked_until       = CASE WHEN failed_login_count + 1 >= $2
+                                   THEN now() + $3 * interval '1 millisecond'
+                                   ELSE locked_until END
+       WHERE id = $1`,
+      [id, maxFailures, lockMs],
+    );
   }
 
   /**

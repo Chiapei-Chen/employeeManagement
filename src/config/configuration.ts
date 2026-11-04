@@ -14,7 +14,10 @@ export interface AppConfig {
   /** 正式環境（HTTPS）必須為 true，cookie 才只會經由 HTTPS 傳送 */
   cookieSecure: boolean;
   seedDemoData: boolean;
+  /** 第一層：依 IP 限制登入頻率，擋一個 IP 對大量帳號猜密碼 */
   loginThrottle: { limit: number; ttlMs: number };
+  /** 第二層：依帳號計算連續失敗次數，擋從多個 IP 猜同一個帳號 */
+  loginLockout: { maxFailures: number; durationMs: number };
 }
 
 function toInt(name: string, value: string | undefined, fallback: number) {
@@ -60,8 +63,21 @@ export default (): AppConfig => {
     // 預設不寫入：展示帳號的密碼是公開的，正式環境忘了設定也不會被建立
     seedDemoData: env.SEED_DEMO_DATA === 'true',
     loginThrottle: {
-      limit: toInt('LOGIN_THROTTLE_LIMIT', env.LOGIN_THROTTLE_LIMIT, 5),
+      // 同一個公司可能共用一個對外 IP，上限不能太低；針對單一帳號的防護交給 loginLockout
+      limit: toInt('LOGIN_THROTTLE_LIMIT', env.LOGIN_THROTTLE_LIMIT, 20),
       ttlMs: toInt('LOGIN_THROTTLE_TTL_MS', env.LOGIN_THROTTLE_TTL_MS, 60_000),
+    },
+    loginLockout: {
+      maxFailures: toInt(
+        'LOGIN_LOCKOUT_MAX_FAILURES',
+        env.LOGIN_LOCKOUT_MAX_FAILURES,
+        5,
+      ),
+      durationMs: toInt(
+        'LOGIN_LOCKOUT_DURATION_MS',
+        env.LOGIN_LOCKOUT_DURATION_MS,
+        15 * 60_000,
+      ),
     },
   };
 };

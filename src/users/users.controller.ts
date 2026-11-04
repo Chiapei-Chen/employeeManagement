@@ -86,4 +86,13 @@ export class UsersController {
   ): Promise<void> {
     await this.usersService.resetPassword(id, dto.newPassword, actor);
   }
+
+  /** 解除帳號的登入鎖定（連續輸錯密碼被暫時鎖定時） */
+  @Post(':id/unlock')
+  @HttpCode(200)
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiNotFoundResponse({ description: 'USER_NOT_FOUND' })
+  unlock(@Param('id', ParseIntPipe) id: number): Promise<UserResponseDto> {
+    return this.usersService.unlock(id);
+  }
 }
