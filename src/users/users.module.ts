@@ -6,7 +6,7 @@ import { UsersController } from './users.controller.js';
 import { UsersService } from './users.service.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User])], // 我要操作 users 資料表
+  imports: [TypeOrmModule.forFeature([User])],
   controllers: [UsersController],
   providers: [UsersService, UsersRepository],
   // 只開放邏輯層給 AuthModule 使用，資料層不對外

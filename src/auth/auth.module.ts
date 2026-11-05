@@ -35,7 +35,6 @@ import { RefreshTokensRepository } from './refresh-tokens.repository.js';
             ttl: config.get('loginThrottle.ttlMs', { infer: true }),
           },
         ],
-        // 預設訊息是 "ThrottlerException: Too Many Requests"，會帶出內部類別名稱
         errorMessage: 'Too many attempts, please try again later',
       }),
     }),
