@@ -23,6 +23,7 @@ export function setRefreshCookie(
   });
 }
 
+/** 清除 refresh token 的 cookie */
 export function clearRefreshCookie(res: Response, secure: boolean) {
   res.clearCookie(REFRESH_COOKIE, baseOptions(secure));
 }

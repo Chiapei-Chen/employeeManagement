@@ -2,7 +2,6 @@ import { HttpStatus } from '@nestjs/common';
 
 /**
  * 前端應該依 `code` 判斷錯誤，而不是比對 message 字串。
- * message 是給人看的，隨時可能改字；code 是 API 合約的一部分。
  */
 export enum ErrorCode {
   ValidationFailed = 'VALIDATION_FAILED',

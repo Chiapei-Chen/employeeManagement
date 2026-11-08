@@ -27,7 +27,7 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(), // 方法上標籤
-      context.getClass(),  // 控制器類別上標籤
+      context.getClass(), // 控制器類別上標籤
     ]);
     if (isPublic) return true;
 
@@ -43,8 +43,10 @@ export class JwtAuthGuard implements CanActivate {
     }
     if (payload.typ !== 'access') throw this.unauthorized('Invalid token type');
 
+    // 判斷帳號是否仍然啟用
     const user = await this.usersService.getActiveById(payload.sub);
     if (!user) throw this.unauthorized('User no longer active');
+    // 驗證密碼版本是否一致
     if (payload.pwd !== passwordVersion(user)) {
       throw this.unauthorized('Password has been changed, please log in again');
     }
