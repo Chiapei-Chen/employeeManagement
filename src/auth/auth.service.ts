@@ -88,6 +88,7 @@ export class AuthService {
 
     let payload: JwtPayload;
     try {
+      // 檢查簽章以及過期時間
       payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken);
     } catch {
       throw this.unauthorized('Invalid or expired refresh token');
@@ -96,8 +97,10 @@ export class AuthService {
       throw this.unauthorized('Invalid token type');
     }
 
+    // 判斷帳號是否仍然啟用
     const user = await this.usersService.getActiveById(payload.sub);
     if (!user) throw this.unauthorized('User no longer active');
+    // 判斷密碼是否已修改
     if (payload.pwd !== passwordVersion(user)) {
       throw this.unauthorized('Password has been changed, please log in again');
     }
@@ -106,7 +109,7 @@ export class AuthService {
     const nextId = randomUUID();
     const result = await this.refreshTokens.rotate(
       payload.jti,
-      REFRESH_REUSE_GRACE_MS,
+      REFRESH_REUSE_GRACE_MS, // 寬限10秒
       { id: nextId, expiresAt: this.refreshExpiresAt() },
     );
     if (result === 'reused') {

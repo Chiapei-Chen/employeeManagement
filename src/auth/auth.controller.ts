@@ -155,6 +155,7 @@ export class AuthController {
     return session.response;
   }
 
+  /** cookie 的 secure 屬性，依環境設定 */
   private cookieSecure() {
     return this.config.get('cookieSecure', { infer: true });
   }
