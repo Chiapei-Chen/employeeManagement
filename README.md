@@ -69,7 +69,7 @@ src/
 ├── app.setup.ts               全域設定：ValidationPipe、Exception Filter、路徑前綴
 ├── config/                    讀取並驗證環境變數
 ├── database/                  資料庫連線與 migrations
-├── common/                    跨模組共用：錯誤碼定義、統一錯誤格式、驗證 decorator
+├── common/                    跨模組共用：錯誤碼定義、統一錯誤格式、驗證 decorator、請求日誌 middleware
 ├── auth/                      登入、JWT、Guard、角色與權限定義
 ├── users/                     登入帳號與帳號管理
 ├── employees/                 員工資料管理

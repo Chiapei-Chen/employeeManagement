@@ -12,6 +12,8 @@
 - [共通原則](#共通原則)
 - [共通規範](#共通規範)
 - [POST /auth/login](#post-authlogin)
+- [POST /auth/refresh](#post-authrefresh)
+- [POST /auth/logout](#post-authlogout)
 - [GET /auth/me](#get-authme)
 - [PATCH /auth/me/password](#patch-authmepassword)
 - [GET /employees](#get-employees)
@@ -120,7 +122,7 @@
 
 **限流**：分成兩層（詳見 [validation-and-auth.md](validation-and-auth.md#二登入)）
 - 同一個 IP 每 60 秒最多 20 次（成功的登入也會計入），超過回 429
-- 同一個帳號連續輸錯 5 次，鎖定 15 分鐘。鎖定期間即使密碼正確也回 `401 INVALID_CREDENTIALS`，與密碼錯誤相同，不透露帳號已被鎖定
+- 同一個帳號連續輸錯 5 次，鎖定 15 分鐘。觸發鎖定的那一次與鎖定期間（即使密碼正確）都回 `401 ACCOUNT_LOCKED`，讓使用者知道原因。代價是會透露這個帳號存在
 
 **Request**
 ```json
@@ -142,7 +144,7 @@
     "id": 1,
     "username": "admin",
     "role": "admin",
-    "permissions": ["employee:read", "employee:create", "employee:update"]
+    "permissions": ["employee:read", "employee:create", "employee:update", "user:manage"]
   }
 }
 ```
@@ -155,6 +157,7 @@
 |---|---|---|
 | 400 | VALIDATION_FAILED | 缺少欄位 |
 | 401 | INVALID_CREDENTIALS | 帳號不存在、密碼錯誤、帳號已停用。**三種情況回傳相同的訊息**，避免被用來探測哪些帳號存在 |
+| 401 | ACCOUNT_LOCKED | 連續輸錯密碼，帳號暫時鎖定中 |
 | 429 | TOO_MANY_REQUESTS | 嘗試次數過多 |
 
 ---
@@ -514,6 +517,7 @@ GET /api/v1/employees?department=Engineering&status=active&sortBy=hireDate&sortO
 | VALIDATION_FAILED | 400 | 請求格式或內容不合法 |
 | UNAUTHORIZED | 401 | 沒有 token、token 無效或過期、帳號已停用、密碼已被修改 |
 | INVALID_CREDENTIALS | 401 | 登入失敗 |
+| ACCOUNT_LOCKED | 401 | 帳號因連續輸錯密碼暫時鎖定 |
 | FORBIDDEN | 403 | 權限不足 |
 | EMPLOYEE_NOT_FOUND | 404 | 員工不存在 |
 | EMPLOYEE_NO_DUPLICATED | 409 | 員工編號重複 |

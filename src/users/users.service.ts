@@ -53,12 +53,15 @@ export class UsersService {
     return this.getEntityOrThrow(id);
   }
 
-  /** 帳號-記錄一次登入失敗，連續失敗達到上限就暫時鎖定 */
-  async recordLoginFailure(id: number): Promise<void> {
+  /**
+   * 帳號-記錄一次登入失敗，連續失敗達到上限就暫時鎖定
+   * @returns 這次失敗之後帳號是否已被鎖定
+   */
+  async recordLoginFailure(id: number): Promise<boolean> {
     const { maxFailures, durationMs } = this.config.get('loginLockout', {
       infer: true,
     });
-    await this.usersRepository.recordLoginFailure(id, maxFailures, durationMs);
+    return this.usersRepository.recordLoginFailure(id, maxFailures, durationMs);
   }
 
   /** 帳號-清除登入失敗次數與鎖定（登入成功時） */

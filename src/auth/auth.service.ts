@@ -53,19 +53,26 @@ export class AuthService {
     // 帳號不存在、已鎖定時也比對一次，讓回應時間相近，避免被猜出哪些帳號存在或已被鎖定
     const passwordOk = await verifyPassword(password, user?.passwordHash);
 
-    // 判斷 帳號是否存在、是否啟用、是否鎖定中
-    // 鎖定中即使密碼正確也拒絕，否則攻擊者在鎖定期間仍然可以繼續猜
-    // 與密碼錯誤回傳同一個錯誤，不透露是哪一種
-    const locked = !!user?.lockedUntil && user.lockedUntil > new Date();
-    if (!user || !user.isActive || locked) {
+    // 判斷 帳號是否存在、是否啟用
+    // 兩者回傳同一個錯誤，不透露是哪一種
+    if (!user || !user.isActive) {
       throw AppException.of(ErrorCode.InvalidCredentials);
     }
 
+    // 判斷 是否鎖定中
+    // 鎖定中即使密碼正確也拒絕，否則攻擊者在鎖定期間仍然可以繼續猜
+    // 取捨：明確告知「已鎖定」讓使用者知道原因，代價是會透露這個帳號存在
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw AppException.of(ErrorCode.AccountLocked);
+    }
+
     // 判斷 密碼是否正確
-    // 錯誤時記錄失敗次數，連續失敗達到上限就暫時鎖定
+    // 錯誤時記錄失敗次數，連續失敗達到上限就暫時鎖定；觸發鎖定的這一次就直接告知已鎖定
     if (!passwordOk) {
-      await this.usersService.recordLoginFailure(user.id);
-      throw AppException.of(ErrorCode.InvalidCredentials);
+      const lockedNow = await this.usersService.recordLoginFailure(user.id);
+      throw AppException.of(
+        lockedNow ? ErrorCode.AccountLocked : ErrorCode.InvalidCredentials,
+      );
     }
 
     // 登入成功，清除之前的失敗次數

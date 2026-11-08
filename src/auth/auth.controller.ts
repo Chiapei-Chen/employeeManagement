@@ -56,7 +56,9 @@ export class AuthController {
   // 只對 login 限流：降低暴力破解密碼的風險
   @UseGuards(ThrottlerGuard)
   @ApiOkResponse({ type: LoginResponseDto })
-  @ApiUnauthorizedResponse({ description: 'INVALID_CREDENTIALS' })
+  @ApiUnauthorizedResponse({
+    description: 'INVALID_CREDENTIALS / ACCOUNT_LOCKED',
+  })
   @ApiTooManyRequestsResponse({ description: 'TOO_MANY_REQUESTS' })
   async login(
     @Body() dto: LoginDto,

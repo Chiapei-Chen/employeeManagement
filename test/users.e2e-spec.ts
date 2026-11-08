@@ -381,17 +381,20 @@ describe('Users / account management (e2e)', () => {
       }
     }
 
-    it('locks the account after consecutive failures, rejecting even the correct password with the same error', async () => {
+    it('locks the account after consecutive failures, rejecting even the correct password with ACCOUNT_LOCKED', async () => {
       const u = await createUser();
-      const wrong = await login(u.username, 'Wrong@123').expect(401);
-      await failLogins(u.username, MAX_FAILURES - 1);
+      for (let i = 0; i < MAX_FAILURES - 1; i++) {
+        const res = await login(u.username, 'Wrong@123').expect(401);
+        expect(res.body.code).toBe('INVALID_CREDENTIALS');
+      }
 
+      // 觸發鎖定的那一次就回 ACCOUNT_LOCKED
+      const locking = await login(u.username, 'Wrong@123').expect(401);
+      expect(locking.body.code).toBe('ACCOUNT_LOCKED');
+
+      // 鎖定中即使密碼正確也拒絕
       const res = await login(u.username, u.password).expect(401);
-      // 與密碼錯誤相同，不透露帳號已被鎖定
-      expect(res.body).toMatchObject({
-        code: wrong.body.code,
-        message: wrong.body.message,
-      });
+      expect(res.body.code).toBe('ACCOUNT_LOCKED');
 
       const list = await as(adminToken).get('/api/v1/users').expect(200);
       const row = list.body.find((x: { id: number }) => x.id === u.id);

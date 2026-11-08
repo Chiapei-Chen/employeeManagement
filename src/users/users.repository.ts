@@ -78,22 +78,27 @@ export class UsersRepository {
    * 「+1、判斷是否達到上限、鎖定」寫在同一條 UPDATE：
    * 若先讀出次數再寫回，同時送出的錯誤嘗試會讀到相同的舊值，次數就會少算。
    * PostgreSQL 的 SET 中引用的欄位都是更新前的值，所以兩個 CASE 看到的 failed_login_count 相同。
+   *
+   * @returns 這次失敗之後帳號是否處於鎖定狀態（RETURNING 取的是更新後的值）
    */
   async recordLoginFailure(
     id: number,
     maxFailures: number,
     lockMs: number,
-  ): Promise<void> {
-    await this.repo.query(
+  ): Promise<boolean> {
+    // UPDATE 時 TypeORM 回傳 [rows, affectedCount]
+    const [rows] = (await this.repo.query(
       `UPDATE users SET
          failed_login_count = CASE WHEN failed_login_count + 1 >= $2
                                    THEN 0 ELSE failed_login_count + 1 END,
          locked_until       = CASE WHEN failed_login_count + 1 >= $2
                                    THEN now() + $3 * interval '1 millisecond'
                                    ELSE locked_until END
-       WHERE id = $1`,
+       WHERE id = $1
+       RETURNING locked_until IS NOT NULL AND locked_until > now() AS locked`,
       [id, maxFailures, lockMs],
-    );
+    )) as [{ locked: boolean }[], number];
+    return rows[0]?.locked === true;
   }
 
   /**

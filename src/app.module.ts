@@ -22,7 +22,7 @@ import { SeedService } from './seed/seed.service.js';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    // 套用到所有路由；新版 path-to-regexp 不接受單獨的 '*'，要寫成具名的萬用字元
+    // 套用到所有路由
     consumer.apply(RequestLoggerMiddleware).forRoutes('{*path}');
   }
 }

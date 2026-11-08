@@ -6,11 +6,11 @@
 
 | 模組 | 責任 | 對外提供 | 依賴 |
 |---|---|---|---|
-| `AuthModule` | 登入、簽發 JWT、修改自己的密碼、**全域**的認證與授權 | `/auth/*`、兩個 `APP_GUARD` | UsersModule、JwtModule、ThrottlerModule |
+| `AuthModule` | 登入、簽發 JWT、refresh token 的換發與作廢、修改自己的密碼、**全域**的認證與授權 | `/auth/*`、兩個 `APP_GUARD` | UsersModule、JwtModule、ThrottlerModule、TypeORM |
 | `UsersModule` | 帳號管理、提供帳號資料給登入使用 | `UsersService`（export，資料層不對外）、`/users` | TypeORM |
 | `EmployeesModule` | 員工的查詢、新增、修改與業務規則 | `/employees` | TypeORM |
 | `DatabaseModule` | 資料庫連線、啟動時執行 migration | — | ConfigService |
-| `common/` | 跨模組共用的工具（不是 Nest module） | 錯誤碼定義、錯誤格式、驗證 decorator、DB 錯誤轉譯 | — |
+| `common/` | 跨模組共用的工具（不是 Nest module） | 錯誤碼定義、錯誤格式、驗證 decorator、DB 錯誤轉譯、請求日誌 middleware | — |
 
 **模組之間沒有循環依賴。** `@RequirePermissions`、`@CurrentUser` 是一般的函式，不屬於任何模組，所以 UsersModule 和 EmployeesModule 使用它們時不需要 import AuthModule。實際的權限檢查由 AuthModule 以 `APP_GUARD` 全域執行。
 
@@ -27,7 +27,7 @@
 | 資料層 | `employees.repository.ts` | 所有查詢與寫入（TypeORM Repository、Query Builder）；條件式更新；把 DB 的 unique 錯誤轉成 `UniqueConstraintException`（只說明哪個欄位重複，不帶業務錯誤碼） |
 |  | `employee.entity.ts` | 資料表結構、DB constraint |
 
-`auth/` 沒有自己的資料表，需要的帳號資料都透過 `UsersService` 取得，所以沒有資料層。`UsersModule` 只 export `UsersService`，其他模組無法繞過邏輯層直接存取帳號資料。
+`auth/` 只有自己的 `refresh_tokens` 資料表（`refresh-token.entity.ts`、`refresh-tokens.repository.ts`）；需要的帳號資料都透過 `UsersService` 取得。`UsersModule` 只 export `UsersService`，其他模組無法繞過邏輯層直接存取帳號資料。
 
 - **資料層獨立**：邏輯層只看得到「取得、新增、更新」這類方法，不需要知道 SQL 怎麼寫；查詢方式改變時只需要修改資料層
 - **資料層用型別定義界線，不另外寫轉換**：資料層自己定義需要的欄位（`QueryEmployeesDb`、`AddEmployeeDb`、`UpdateEmployeeDb`，命名方式與 DTO 對應，結尾改為 `Db`），不 import 任何 DTO。TypeScript 依欄位比對型別，邏輯層可以直接傳入 DTO，不需要逐層轉換
@@ -43,6 +43,7 @@
 | 輸入驗證 | 全域 `ValidationPipe`（`whitelist`、`forbidNonWhitelisted`、`transform`） |
 | 錯誤處理 | 各層丟出 `AppException.of(ErrorCode.XXX)`，HTTP 狀態碼與預設訊息集中定義在 `ERROR_DEFINITIONS`（`error-codes.ts`）；全域 `HttpExceptionFilter` 統一回應格式 |
 | 登入限流 | 兩層：`ThrottlerGuard` 依 IP 限流，只套用在需要驗證密碼的 endpoint；`AuthService` 依帳號計算連續失敗次數並暫時鎖定 |
+| 請求日誌 | `RequestLoggerMiddleware` 在 `AppModule` 套用到所有路由，回應送出後記錄 method、路徑、狀態碼與耗時 |
 
 這些全域設定寫在 `app.setup.ts`，`main.ts` 與 e2e 測試共用，確保測試的行為與正式環境相同。
 
@@ -52,6 +53,7 @@
 erDiagram
     direction LR
     users |o--o{ employees : "建立 / 最後修改"
+    users ||--o{ refresh_tokens : "登入換發"
 
     users {
         integer id PK
@@ -66,15 +68,22 @@ erDiagram
         integer created_by "未設外鍵，由程式寫入"
         integer updated_by "未設外鍵，由程式寫入"
     }
+
+    refresh_tokens {
+        uuid id PK
+        integer user_id FK
+        uuid family_id
+    }
 ```
 
 圖中只列出主鍵、唯一欄位與關聯欄位，完整欄位見下方表格。
 
-**兩張表的關係**
+**資料表之間的關係**
 
 - `users` 是**能登入系統的帳號**，`employees` 是**被管理的員工資料**。兩者是不同的概念：員工不一定有帳號，帳號也不一定是員工，所以沒有一對一的關聯
 - 唯一的關聯是**操作紀錄**：`employees.created_by` / `updated_by` 記錄是哪個帳號建立、最後修改了這筆員工資料。一個帳號可以操作多位員工（一對多）
 - 這個關聯**沒有在資料庫設定外鍵**，由程式寫入。因為帳號不提供刪除（只能停用），不會出現指向不存在帳號的紀錄
+- `refresh_tokens` 記錄每一張簽發過的 refresh token，`user_id` 有外鍵指向 `users`（`ON DELETE CASCADE`）
 
 ### `users`
 
@@ -89,6 +98,18 @@ erDiagram
 | failed_login_count | integer DEFAULT 0 | 連續登入失敗次數；登入成功、鎖定、解鎖時歸零 |
 | locked_until | timestamptz NULL | 連續失敗達到上限時，鎖定到這個時間 |
 | created_at / updated_at | timestamptz | |
+
+### `refresh_tokens`
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| id | uuid PK | JWT 的 `jti`；不儲存 token 本身 |
+| user_id | integer FK INDEX | 屬於哪個帳號 |
+| family_id | uuid INDEX | 同一次登入換發出來的 token 共用同一個 family，偵測到重複使用或登出時整個作廢 |
+| expires_at | timestamptz | 過期時間 |
+| used_at | timestamptz NULL | 已拿來換發新 token 的時間 |
+| revoked_at | timestamptz NULL | 作廢時間（登出或偵測到重複使用） |
+| created_at | timestamptz | |
 
 ### `employees`
 
@@ -106,7 +127,7 @@ erDiagram
 | resignation_date | date NULL | CHECK：離職才能有值，且不可早於到職日 |
 | version | integer | 樂觀鎖 |
 | created_by / updated_by | integer NULL | 誰建立、誰最後修改 |
-| created_at / updated_at | datetime | |
+| created_at / updated_at | timestamptz | |
 
 - **Index**：`department`、`status`、`hire_date` 是列表的篩選條件
 - **CHECK constraint**：service 已經檢查過的規則，資料庫再擋一次。直接修改資料或程式有 bug 時，資料庫仍會拒絕不合法的資料

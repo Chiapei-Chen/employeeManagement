@@ -4,6 +4,7 @@ import { ApiError } from './api'
 const CODE_MESSAGES: Record<string, string> = {
   VALIDATION_FAILED: '資料有誤，請檢查標示的欄位',
   INVALID_CREDENTIALS: '帳號或密碼錯誤',
+  ACCOUNT_LOCKED: '密碼連續輸錯太多次，帳號已暫時鎖定，請稍後再試或聯絡管理員',
   TOO_MANY_REQUESTS: '嘗試次數過多，請稍後再試',
   FORBIDDEN: '你沒有執行此操作的權限',
   EMPLOYEE_NOT_FOUND: '找不到這位員工',

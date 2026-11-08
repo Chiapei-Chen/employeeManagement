@@ -7,6 +7,7 @@ export enum ErrorCode {
   ValidationFailed = 'VALIDATION_FAILED',
   Unauthorized = 'UNAUTHORIZED',
   InvalidCredentials = 'INVALID_CREDENTIALS',
+  AccountLocked = 'ACCOUNT_LOCKED',
   Forbidden = 'FORBIDDEN',
   NotFound = 'NOT_FOUND',
   EmployeeNotFound = 'EMPLOYEE_NOT_FOUND',
@@ -44,6 +45,12 @@ export const ERROR_DEFINITIONS: Record<
   [ErrorCode.InvalidCredentials]: {
     status: HttpStatus.UNAUTHORIZED,
     message: 'Invalid username or password',
+  },
+  // 與 INVALID_CREDENTIALS 同為 401，前端處理登入失敗的流程不需要分開
+  [ErrorCode.AccountLocked]: {
+    status: HttpStatus.UNAUTHORIZED,
+    message:
+      'Account is temporarily locked due to too many failed login attempts',
   },
   [ErrorCode.Forbidden]: {
     status: HttpStatus.FORBIDDEN,
